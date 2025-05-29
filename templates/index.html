@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chatbot da Faculdade</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="chatbox">
+        <h2>🤖 Chatbot da Faculdade</h2>
+
+        <div class="mensagens">
+            {% for msg in historico %}
+                <div class="mensagem">
+                    <div class="pergunta">👤 Você: {{ msg.pergunta }}</div>
+                    <div class="resposta">🤖 Bot: {{ msg.resposta }}</div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="input-area">
+            <form method="POST">
+                <input type="text" name="mensagem" placeholder="Pergunte algo como: Qual a aula de ADS na terça?" required>
+                <button type="submit">Enviar</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
