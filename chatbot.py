@@ -1,51 +1,87 @@
-import sqlite3
 import re
+import requests
+import sqlite3
+
+# Sinônimos dos cursos
+cursos_validos = {
+    "ads": ["ads", "análise", "desenvolvimento", "sistemas"],
+    "engenharia": ["engenharia", "engenharia elétrica", "eng elétrica"]
+}
+
+# Palavras-chave relacionadas à faculdade
+keywords_faculdade = [
+    "horário", "aula", "curso", "disciplina", "professor",
+    "campinas", "if", "instituto federal", "calendário", "exame"
+]
+
+def identificar_curso(texto):
+    texto = texto.lower()
+    for curso, sinonimos in cursos_validos.items():
+        if any(s in texto for s in sinonimos):
+            return curso
+    return None
+
+def contem_palavra_faculdade(texto):
+    texto = texto.lower()
+    return any(palavra in texto for palavra in keywords_faculdade)
 
 def interpretar_mensagem(mensagem):
-    mensagem = mensagem.lower()
+    mensagem_lower = mensagem.lower()
 
-    # Saudações
-    if re.search(r"\b(oi|olá|bom dia|boa tarde|boa noite)\b", mensagem):
-        return "Olá! Como posso te ajudar hoje?"
+    # Respostas diretas para cumprimentos
+    cumprimentos = ["oi", "olá", "bom dia", "boa tarde", "boa noite", "e aí", "fala"]
+    if any(cumprimento in mensagem_lower for cumprimento in cumprimentos):
+        return "Olá! Posso ajudar com informações sobre o IF Campinas."
 
-    # Agradecimentos
-    if re.search(r"\b(obrigado|valeu|agradecido)\b", mensagem):
-        return "De nada! Qualquer coisa, estou por aqui. 😊"
+    # Tenta identificar curso e dia
+    curso = identificar_curso(mensagem)
+    dia_match = re.search(r"(segunda|terça|quarta|quinta|sexta|sábado|domingo)", mensagem_lower)
 
-    # Educação
-    if re.search(r"\b(por favor|poderia|poderia me informar|seria possível)\b", mensagem):
-        return "Claro! Pode me dizer o curso e o dia da semana?"
-
-    # Solicitação de horário
-    curso_match = re.search(r"\b(ads|engenharia)\b", mensagem)
-    dia_match = re.search(r"\b(segunda|terça|quarta|quinta|sexta)\b", mensagem)
-
-    if curso_match and dia_match:
-        curso = curso_match.group(1)
+    if curso and dia_match:
         dia = dia_match.group(1)
         return buscar_horario(curso, dia)
 
-    # Se mencionou só curso
-    if curso_match and not dia_match:
-        return "Você mencionou o curso, mas não disse o dia. Qual dia da semana você quer saber?"
+    # Se não tem curso/dia, verifica se a pergunta é sobre faculdade (keywords)
+    if contem_palavra_faculdade(mensagem):
+        return responder_com_llm(mensagem)
 
-    # Se mencionou só dia
-    if dia_match and not curso_match:
-        return "Você mencionou o dia, mas não disse o curso. Qual curso você quer saber?"
-
-    # Mensagem genérica não compreendida
-    return "Desculpe, não entendi. Você pode perguntar, por exemplo: 'Qual a aula de ADS na terça?' 😊"
+    # Caso não seja nada relacionado
+    return "Desculpe, só respondo perguntas relacionadas ao IF Campinas."
 
 def buscar_horario(curso, dia):
     conn = sqlite3.connect('horarios.db')
     c = conn.cursor()
-
     c.execute("SELECT horario, disciplina FROM horarios WHERE curso=? AND dia=?", (curso, dia))
-    resultado = c.fetchone()
+    resultados = c.fetchall()
     conn.close()
 
-    if resultado:
-        horario, disciplina = resultado
-        return f"{curso.upper()} na {dia.capitalize()}: {horario} - {disciplina}"
+    if resultados:
+        resposta = f"Aulas de {curso.upper()} na {dia.capitalize()}:\n"
+        for horario, disciplina in resultados:
+            resposta += f"- {horario} - {disciplina}\n"
+        return resposta.strip()
     else:
         return f"Não encontrei aula para {curso.upper()} na {dia.capitalize()}."
+
+def responder_com_llm(pergunta):
+    prompt = (
+        "Você é um assistente do Instituto Federal de Campinas (IF Campinas). "
+        "Responda sempre em português, com frases curtas e diretas, apenas sobre assuntos relacionados ao IF Campinas, como cursos, horários e disciplinas. "
+        "Se a pergunta não for sobre esses temas, responda: 'Desculpe, só respondo perguntas relacionadas ao IF Campinas.'\n\n"
+        f"Pergunta: {pergunta}\n"
+        "Resposta:"
+    )
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": "tinyllama", "prompt": prompt, "stream": False}
+        )
+
+        if response.ok:
+            resposta = response.json().get("response", "").strip()
+            return resposta if resposta else "Desculpe, não entendi."
+        else:
+            return f"Erro na requisição: {response.status_code}"
+    except Exception as e:
+        return f"Erro ao conectar ao modelo: {str(e)}"

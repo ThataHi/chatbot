@@ -1,4 +1,5 @@
 import sqlite3
+
 def criar_banco():
     conn = sqlite3.connect('horarios.db')
     c = conn.cursor()
@@ -21,7 +22,11 @@ def criar_banco():
         ('engenharia', 'terça', '08h às 11h', 'Física')
     ]
 
-    c.executemany('INSERT INTO horarios (curso, dia, horario, disciplina) VALUES (?, ?, ?, ?)', dados)
+    for d in dados:
+        c.execute('SELECT * FROM horarios WHERE curso=? AND dia=? AND horario=? AND disciplina=?', d)
+        if not c.fetchone():
+            c.execute('INSERT INTO horarios (curso, dia, horario, disciplina) VALUES (?, ?, ?, ?)', d)
+
     conn.commit()
     conn.close()
 
